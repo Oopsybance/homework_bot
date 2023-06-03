@@ -1,13 +1,12 @@
 import logging
 import os
 import time
-
-import requests
 import telegram
+import requests
+import sys
 import exceptions
 
 from dotenv import load_dotenv
-from telegram import Bot, TelegramError, Update
 
 
 load_dotenv()
@@ -33,7 +32,7 @@ def check_tokens():
     """Проверка доступности токенов."""
     tokens = {'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
               'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
-              'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID,}
+              'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID}
     for name, value in tokens.items():
         if value is None:
             logging.critical(f'Отсутсвует токен {name}')
@@ -46,7 +45,7 @@ def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.debug(f'Сообщение отправлено: {message}')  
+        logging.debug(f'Сообщение отправлено: {message}')
     except Exception as error:
         logging.error(f'Не удалось отправить сообщение - {error}')
 
@@ -88,7 +87,7 @@ def parse_status(homework):
     if homework_status not in (HOMEWORK_VERDICTS):
         raise KeyError(f'Отсутствуи ожидаемого ключа {status} в ответе API')
     verdict = HOMEWORK_VERDICTS[homework_status]
-    logging.error('Изменился статус проверки работы')   
+    logging.error('Изменился статус проверки работы')
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
