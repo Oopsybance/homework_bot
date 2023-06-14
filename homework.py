@@ -11,14 +11,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-MESSAGE_DEBUG = 'Отладочное сообщение: {}'
-MESSAGE_DEBUG_WITH_ERROR = 'Отладочное сообщение: {} - {}'
+DEBUG_MESSAGE_TEMPLATE = 'Сообщение об отладке: {}'
+DEBUG_MESSAGE_WITH_ERROR_TEMPLATE = 'Отладочное сообщение с ошибкой: {} - {}'
 KEY_ANSWER = 'Ошибка {}'
-API_ERROR = 'Ошибка API: {}'
+API_ERROR = ('Ошибка API: {}. Эндпоинт {} недоступен. Параметры запроса: '
+             'headers - {}, params - {}.')
 ERROR_CHEK_RESPONSE = 'Ошибка типа овета: {}'
 KEY_HOMEWORK_IS_NOT = 'Ключ homeworks отсутствует'
-HOMEWORKS_LIST_TYPE = 'Неверный тип списка заданий.' \
-                      'Ожидался тип list, получен:'
+HOMEWORKS_LIST_TYPE = ('Неверный тип списка заданий.'
+                       'Ожидался тип list, получен: {}')
 STATUS_HOMEWORK_VERDICT = 'не соответствует справочнику статусов {}'
 KEY_STATUS = 'Ключ status отсутствует в homework'
 KEY_HOMEWORK_NAME = 'Ключ homework_name отсутствует в homework'
@@ -26,11 +27,11 @@ TOKEN_CHEK = 'Проверка токенов прошла успешно'
 HOMEWORK_FOR_PERIOD = 'Список работ за запрашиваемый период пустой'
 BOT_NOT_WORK = 'Сбой в работе бота: {}'
 NOT_TOKENS_ERROR = 'Некоторые токены отсутствуют:{}'
-STATUS_HOMEWORK_MSG = 'Изменился статус проверки работы "{}". {}'
-REQUSET_PARAMETRS = 'Эндпоинт {} недоступен. Параметры запроса:' \
-                    'headers - {}, params - {}.'
-REQUEST_STATUS_CODE = 'Неверный код {} returned from }. ' \
-                      'Params: {} - Headers: {}'
+STATUS_HOMEWORK_MESSAGE = 'Изменился статус проверки работы "{}". {}'
+REQUEST_PARAMETRS = ('Эндпоинт {} недоступен. Параметры запроса:'
+                     'headers - {}, params - {}.')
+REQUEST_STATUS_CODE = ('Неверный код {} returned from {url} '
+                       'params: {params} - Headers: {headers}')
 BOT_ERROR = 'Сбой в работе бота: {}!'
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
@@ -67,36 +68,35 @@ def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.debug(MESSAGE_DEBUG.format(message))
+        logging.debug(DEBUG_MESSAGE_TEMPLATE.format(message))
     except Exception as error:
         logging.exception(
-            logging.debug(MESSAGE_DEBUG_WITH_ERROR.format(
-                MESSAGE_DEBUG, error))
+            logging.debug(DEBUG_MESSAGE_WITH_ERROR_TEMPLATE.format(
+                DEBUG_MESSAGE_TEMPLATE, error))
         )
 
 
 def get_api_answer(timestamp):
     """Запрос к эндпоинту API-сервиса."""
-    rq_pars = {
+    request_parameters = {
         'url': ENDPOINT,
         'headers': HEADERS,
         'params': {'from_date': timestamp}
     }
     try:
-        response = requests.get(**rq_pars)
+        response = requests.get(**request_parameters)
     except requests.exceptions.RequestException as error:
-        error_msg = REQUSET_PARAMETRS.format(error)
-        raise requests.exceptions.RequestException(error_msg)
+        raise ValueError(REQUEST_PARAMETRS.format(error, request_parameters))
     if response.status_code != HTTPStatus.OK:
-        raise ValueError(REQUEST_STATUS_CODE.format(response.status_code,
-                                                    rq_pars['url'],
-                                                    rq_pars['params'],
-                                                    rq_pars['headers']))
+        raise ValueError(REQUEST_STATUS_CODE.format(
+            response.status_code, **request_parameters)
+        )
     api_response = response.json()
     for key in ('code', 'error'):
         if key in api_response:
-            error_msg = API_ERROR.format(api_response[key])
-            raise ValueError(error_msg)
+            raise ValueError(API_ERROR.format(
+                api_response[key]), **request_parameters
+            )
     return api_response
 
 
@@ -104,12 +104,12 @@ def check_response(response):
     """Проверка ответа API на корректность."""
     if not isinstance(response, dict):
         raise TypeError(ERROR_CHEK_RESPONSE.format(type(response)))
-    homeworks_list = response.get('homeworks')
+    homeworks = response.get('homeworks')
     if 'homeworks' not in response:
         raise KeyError(KEY_HOMEWORK_IS_NOT)
-    if not isinstance(homeworks_list, list):
-        raise TypeError(HOMEWORKS_LIST_TYPE.format(type(homeworks_list)))
-    return homeworks_list
+    if not isinstance(homeworks, list):
+        raise TypeError(HOMEWORKS_LIST_TYPE.format(type(homeworks)))
+    return homeworks
 
 
 def parse_status(homework):
@@ -121,8 +121,8 @@ def parse_status(homework):
     status = homework.get('status')
     if status not in HOMEWORK_VERDICTS:
         raise ValueError(STATUS_HOMEWORK_VERDICT.format(status))
-    return STATUS_HOMEWORK_MSG.format(homework.get('homework_name'),
-                                      HOMEWORK_VERDICTS[status])
+    return STATUS_HOMEWORK_MESSAGE.format(homework.get('homework_name'),
+                                          HOMEWORK_VERDICTS[status])
 
 
 def main():
@@ -136,18 +136,19 @@ def main():
             response = get_api_answer(timestamp)
             homeworks = check_response(response)
             if not homeworks:
-                if last_error != HOMEWORK_FOR_PERIOD:
-                    last_error = HOMEWORK_FOR_PERIOD
-                    send_message(bot, HOMEWORK_FOR_PERIOD)
+                error_message = HOMEWORK_FOR_PERIOD
             else:
-                message = parse_status(homeworks[0])
-                send_message(bot, message)
-                logging.info(message)
+                error_message = parse_status(homeworks[0])
                 timestamp = response.get('current_date', timestamp)
+            if last_error != error_message:
+                send_message(bot, error_message)
+                logging.info(error_message)
+                last_error = error_message
+            else:
+                last_error = None
         except Exception as error:
             error_description = BOT_ERROR.format(error)
             if last_error != error_description:
-                last_error = error_description
                 send_message(bot, BOT_ERROR.format(error_description))
         finally:
             time.sleep(RETRY_PERIOD)
@@ -156,7 +157,10 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler()],
-        level=logging.INFO,
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('bot.log')
+        ],
+        level=logging.INFO
     )
     main()
