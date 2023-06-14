@@ -11,11 +11,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-DEBUG_MESSAGE_TEMPLATE = 'Сообщение об отладке: {}'
-DEBUG_MESSAGE_WITH_ERROR_TEMPLATE = 'Отладочное сообщение с ошибкой: {} - {}'
+FAILURE_TO_SEND_MESSAGE_WITH_ERROR = '{}, {}'
+FAILURE_TO_SEND_MESSAGE = '{}'
 KEY_ANSWER = 'Ошибка {}'
-API_ERROR = ('Ошибка API: {}. Эндпоинт {} недоступен. Параметры запроса: '
-             'headers - {}, params - {}.')
+API_ERROR = ('Ошибка API: {}. Ключ: {}. Эндпоинт {} недоступен.'
+             'Параметры запроса: headers - {}, params - {}.')
 ERROR_CHEK_RESPONSE = 'Ошибка типа овета: {}'
 KEY_HOMEWORK_IS_NOT = 'Ключ homeworks отсутствует'
 HOMEWORKS_LIST_TYPE = ('Неверный тип списка заданий.'
@@ -68,11 +68,11 @@ def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.debug(DEBUG_MESSAGE_TEMPLATE.format(message))
+        logging.debug(FAILURE_TO_SEND_MESSAGE.format(message))
     except Exception as error:
         logging.exception(
-            logging.debug(DEBUG_MESSAGE_WITH_ERROR_TEMPLATE.format(
-                DEBUG_MESSAGE_TEMPLATE, error))
+            logging.debug(FAILURE_TO_SEND_MESSAGE_WITH_ERROR .format(
+                message, error))
         )
 
 
@@ -86,7 +86,7 @@ def get_api_answer(timestamp):
     try:
         response = requests.get(**request_parameters)
     except requests.exceptions.RequestException as error:
-        raise ValueError(REQUEST_PARAMETRS.format(error, request_parameters))
+        raise ValueError(REQUEST_PARAMETRS.format(error, **request_parameters))
     if response.status_code != HTTPStatus.OK:
         raise ValueError(REQUEST_STATUS_CODE.format(
             response.status_code, **request_parameters)
@@ -95,8 +95,8 @@ def get_api_answer(timestamp):
     for key in ('code', 'error'):
         if key in api_response:
             raise ValueError(API_ERROR.format(
-                api_response[key]), **request_parameters
-            )
+                api_response[key], key, **request_parameters
+            ))
     return api_response
 
 
@@ -139,17 +139,17 @@ def main():
                 error_message = HOMEWORK_FOR_PERIOD
             else:
                 error_message = parse_status(homeworks[0])
-                timestamp = response.get('current_date', timestamp)
             if last_error != error_message:
                 send_message(bot, error_message)
                 logging.info(error_message)
                 last_error = error_message
+                timestamp = response.get('current_date', timestamp)
             else:
                 last_error = None
         except Exception as error:
             error_description = BOT_ERROR.format(error)
-            if last_error != error_description:
-                send_message(bot, BOT_ERROR.format(error_description))
+            send_message(bot, BOT_ERROR.format(error_description))
+            last_error = error_description
         finally:
             time.sleep(RETRY_PERIOD)
 
@@ -159,7 +159,7 @@ if __name__ == '__main__':
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('bot.log')
+            logging.FileHandler(__file__ + '.log')
         ],
         level=logging.INFO
     )
