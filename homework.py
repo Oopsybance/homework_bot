@@ -11,11 +11,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-FAILURE_TO_SEND_MESSAGE_WITH_ERROR = '{}, {}'
-FAILURE_TO_SEND_MESSAGE = '{}'
+UNSUCCESSFUL_MESSAGE_SEND_WUTH_ERROR = ('Не удалось отправить сообщение "{}".'
+                                        'Ошибка: {}')
+SUCCESSFUL_MESSAGE_SEND = 'Сообщение успешно отправлено: {}'
 KEY_ANSWER = 'Ошибка {}'
-API_ERROR = ('Ошибка API: {}. Ключ: {}. Эндпоинт {} недоступен.'
-             'Параметры запроса: headers - {}, params - {}.')
+API_ERROR = ('Ошибка API: {}. Ключ: {}. Эндпоинт {url} недоступен.'
+             'Параметры запроса: headers - {headers}, params - {params}.')
 ERROR_CHEK_RESPONSE = 'Ошибка типа овета: {}'
 KEY_HOMEWORK_IS_NOT = 'Ключ homeworks отсутствует'
 HOMEWORKS_LIST_TYPE = ('Неверный тип списка заданий.'
@@ -28,8 +29,8 @@ HOMEWORK_FOR_PERIOD = 'Список работ за запрашиваемый �
 BOT_NOT_WORK = 'Сбой в работе бота: {}'
 NOT_TOKENS_ERROR = 'Некоторые токены отсутствуют:{}'
 STATUS_HOMEWORK_MESSAGE = 'Изменился статус проверки работы "{}". {}'
-REQUEST_PARAMETRS = ('Эндпоинт {} недоступен. Параметры запроса:'
-                     'headers - {}, params - {}.')
+REQUEST_PARAMETRS = ('Ошибка {}. Эндпоинт {url} недоступен. Параметры запроса:'
+                     'headers - {headers}, params - {params}.')
 REQUEST_STATUS_CODE = ('Неверный код {} returned from {url} '
                        'params: {params} - Headers: {headers}')
 BOT_ERROR = 'Сбой в работе бота: {}!'
@@ -68,12 +69,14 @@ def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.debug(FAILURE_TO_SEND_MESSAGE.format(message))
+        logging.debug(SUCCESSFUL_MESSAGE_SEND.format(message))
+        return True
     except Exception as error:
         logging.exception(
-            logging.debug(FAILURE_TO_SEND_MESSAGE_WITH_ERROR .format(
+            logging.debug(UNSUCCESSFUL_MESSAGE_SEND_WUTH_ERROR .format(
                 message, error))
         )
+        return False
 
 
 def get_api_answer(timestamp):
@@ -86,7 +89,8 @@ def get_api_answer(timestamp):
     try:
         response = requests.get(**request_parameters)
     except requests.exceptions.RequestException as error:
-        raise ValueError(REQUEST_PARAMETRS.format(error, **request_parameters))
+        logging.error(REQUEST_PARAMETRS.format(error, **request_parameters))
+        raise error
     if response.status_code != HTTPStatus.OK:
         raise ValueError(REQUEST_STATUS_CODE.format(
             response.status_code, **request_parameters)
@@ -140,10 +144,10 @@ def main():
             else:
                 error_message = parse_status(homeworks[0])
             if last_error != error_message:
-                send_message(bot, error_message)
-                logging.info(error_message)
-                last_error = error_message
-                timestamp = response.get('current_date', timestamp)
+                message_sent = send_message(bot, error_message)
+                if message_sent:
+                    timestamp = response.get('current_date', timestamp)
+                    last_error = error_message
             else:
                 last_error = None
         except Exception as error:
