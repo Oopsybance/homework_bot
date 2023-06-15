@@ -89,8 +89,7 @@ def get_api_answer(timestamp):
     try:
         response = requests.get(**request_parameters)
     except requests.exceptions.RequestException as error:
-        logging.error(REQUEST_PARAMETRS.format(error, **request_parameters))
-        raise error
+        raise ConnectionError(REQUEST_PARAMETRS.format(error, **request_parameters))
     if response.status_code != HTTPStatus.OK:
         raise ValueError(REQUEST_STATUS_CODE.format(
             response.status_code, **request_parameters)
@@ -161,8 +160,8 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(message)s',
+        filemode='w',
         handlers=[
-            logging.StreamHandler(),
             logging.FileHandler(__file__ + '.log')
         ],
         level=logging.INFO
